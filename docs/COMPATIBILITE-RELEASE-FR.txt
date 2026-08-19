@@ -1,0 +1,30 @@
+Raspberry Pi 4 Android USB wakeword fix - compatibilite
+========================================================
+
+Package experimental strictement reserve a :
+
+- Raspberry Pi 4 ;
+- KonstaKANG LineageOS 23.2 / Android 16 ;
+- build du 20 mai 2026, BUILD_ID BP4A.251205.006 ;
+- APEX stock SHA-256 :
+  27b5332e841f50e6b3435b5b512c86981443764e54a517262976bc98f0b587f3 ;
+- Audio Policy USB stock SHA-256 :
+  29d18b8e3ca51dc1f6e54fd39886a60e2372a9e1f610ae9d285311e312b732d5.
+
+Avant installation :
+
+1. conserver une sauvegarde TWRP verifiee de /vendor ;
+2. conserver les deux ZIP, installation et rollback ;
+3. ne jamais contourner une erreur de compatibilite ou de SHA-256.
+
+L'installateur sauvegarde l'APEX stock sous :
+
+  /data/local/tmp/rpi4-usb-wakeword-backup/
+
+Le ZIP de rollback utilise cette sauvegarde. Aucun APEX stock KonstaKANG
+n'est redistribue dans ce package. Si la sauvegarde manque, restaurer /vendor
+avec TWRP ou reflasher l'OTA officiel exactement correspondant.
+
+Etat de validation de test1 : reconnaissance Google et capture HOTWORD mono
+validees ; declenchement final de la phrase Hey Google apres reboot encore a
+confirmer. Voir docs/TUTORIEL-FR.md dans le depot public.

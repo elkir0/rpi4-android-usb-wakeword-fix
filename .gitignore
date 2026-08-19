@@ -1,0 +1,30 @@
+# Android/Gradle outputs
+.gradle/
+**/build/
+local.properties
+
+# Generated release artifacts
+dist/
+*.apex
+*.apk
+*.img
+*.img.gz
+*.raw
+*.wav
+*.zip
+
+# Signing material and credentials
+*.key
+*.pem
+*.pk8
+*.p12
+*.jks
+*.keystore
+*.x509.pem
+adbkey*
+
+# Editor/OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp

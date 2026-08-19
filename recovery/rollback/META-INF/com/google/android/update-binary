@@ -1,0 +1,117 @@
+#!/sbin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Hash placeholders are replaced by scripts/build-release.sh.
+
+OUTFD="$2"
+ZIPFILE="$3"
+WORKDIR=/tmp/rpi4-usb-wakeword-rollback
+BACKUP_DIR=/data/local/tmp/rpi4-usb-wakeword-backup
+APEX_NAME=com.android.hardware.audio.rpi.apex
+
+STOCK_APEX_SHA256=@STOCK_APEX_SHA256@
+PATCHED_APEX_SHA256=@PATCHED_APEX_SHA256@
+STOCK_POLICY_SHA256=@STOCK_POLICY_SHA256@
+PATCHED_POLICY_SHA256=@PATCHED_POLICY_SHA256@
+
+ui_print() {
+    echo "ui_print $1" > "/proc/self/fd/$OUTFD"
+    echo "ui_print" > "/proc/self/fd/$OUTFD"
+}
+
+abort_install() {
+    ui_print "ERREUR: $1"
+    exit 1
+}
+
+sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | cut -d ' ' -f 1
+    elif command -v busybox >/dev/null 2>&1; then
+        busybox sha256sum "$1" | cut -d ' ' -f 1
+    elif command -v toybox >/dev/null 2>&1; then
+        toybox sha256sum "$1" | cut -d ' ' -f 1
+    else
+        return 1
+    fi
+}
+
+verify_hash() {
+    actual=$(sha256_file "$1") || abort_install "outil SHA-256 indisponible"
+    [ "$actual" = "$2" ] || abort_install "empreinte incorrecte: $1"
+}
+
+ui_print "Raspberry Pi 4 - retour arriere micro USB/HOTWORD"
+mount /vendor 2>/dev/null || true
+mount -o rw,remount /vendor 2>/dev/null || true
+mount /data 2>/dev/null || true
+
+[ -d /vendor/apex ] || abort_install "partition /vendor non montee"
+[ -d /data ] || abort_install "partition /data non montee"
+
+CURRENT_APEX=/vendor/apex/$APEX_NAME
+CURRENT_POLICY=/vendor/etc/usb_audio_policy_configuration.xml
+STOCK_BACKUP=$BACKUP_DIR/$APEX_NAME
+[ -s "$CURRENT_APEX" ] || abort_install "APEX audio actuel absent"
+[ -s "$CURRENT_POLICY" ] || abort_install "Audio Policy actuelle absente"
+
+current_apex_sha256=$(sha256_file "$CURRENT_APEX") || \
+    abort_install "calcul SHA-256 APEX impossible"
+case "$current_apex_sha256" in
+    "$STOCK_APEX_SHA256") restore_apex=false ;;
+    "$PATCHED_APEX_SHA256") restore_apex=true ;;
+    *) abort_install "APEX actuel inconnu; restauration refusee" ;;
+esac
+
+current_policy_sha256=$(sha256_file "$CURRENT_POLICY") || \
+    abort_install "calcul SHA-256 Audio Policy impossible"
+case "$current_policy_sha256" in
+    "$STOCK_POLICY_SHA256"|"$PATCHED_POLICY_SHA256") ;;
+    *) abort_install "Audio Policy actuelle inconnue; restauration refusee" ;;
+esac
+
+if [ "$restore_apex" = true ]; then
+    [ -s "$STOCK_BACKUP" ] || abort_install "sauvegarde APEX stock absente"
+    verify_hash "$STOCK_BACKUP" "$STOCK_APEX_SHA256"
+fi
+
+rm -rf "$WORKDIR"
+mkdir -p "$WORKDIR" || abort_install "creation du dossier temporaire"
+unzip -p "$ZIPFILE" payload/usb_audio_policy_configuration.stock.xml > \
+    "$WORKDIR/usb_audio_policy_configuration.stock.xml" || \
+    abort_install "extraction Audio Policy stock impossible"
+verify_hash "$WORKDIR/usb_audio_policy_configuration.stock.xml" "$STOCK_POLICY_SHA256"
+
+if [ "$restore_apex" = true ]; then
+    cp -f "$STOCK_BACKUP" "$CURRENT_APEX.new" || \
+        abort_install "copie temporaire APEX stock impossible"
+    chown 0:0 "$CURRENT_APEX.new"
+    chmod 0644 "$CURRENT_APEX.new"
+    restorecon "$CURRENT_APEX.new" 2>/dev/null || \
+        chcon u:object_r:vendor_file:s0 "$CURRENT_APEX.new" 2>/dev/null || true
+    verify_hash "$CURRENT_APEX.new" "$STOCK_APEX_SHA256"
+    mv -f "$CURRENT_APEX.new" "$CURRENT_APEX" || \
+        abort_install "restauration APEX impossible"
+fi
+
+cp -f "$WORKDIR/usb_audio_policy_configuration.stock.xml" "$CURRENT_POLICY.new" || \
+    abort_install "copie temporaire Audio Policy stock impossible"
+chown 0:0 "$CURRENT_POLICY.new"
+chmod 0644 "$CURRENT_POLICY.new"
+restorecon "$CURRENT_POLICY.new" 2>/dev/null || \
+    chcon u:object_r:vendor_configs_file:s0 "$CURRENT_POLICY.new" 2>/dev/null || true
+verify_hash "$CURRENT_POLICY.new" "$STOCK_POLICY_SHA256"
+mv -f "$CURRENT_POLICY.new" "$CURRENT_POLICY" || \
+    abort_install "restauration Audio Policy impossible"
+
+rm -f /vendor/etc/init/usb-mic-runtime.rc
+rm -f /vendor/bin/usb-mic-runtime.sh
+rm -f /vendor/etc/usb-mic-route.apk
+
+verify_hash "$CURRENT_APEX" "$STOCK_APEX_SHA256"
+verify_hash "$CURRENT_POLICY" "$STOCK_POLICY_SHA256"
+sync
+
+ui_print "Retour arriere termine et verifie."
+ui_print "La sauvegarde APEX est conservee sous /data."
+ui_print "Redemarrez maintenant vers System."
+exit 0

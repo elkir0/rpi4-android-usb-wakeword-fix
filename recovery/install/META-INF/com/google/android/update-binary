@@ -1,0 +1,157 @@
+#!/sbin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Hash placeholders are replaced by scripts/build-release.sh.
+
+OUTFD="$2"
+ZIPFILE="$3"
+WORKDIR=/tmp/rpi4-usb-wakeword-install
+BACKUP_DIR=/data/local/tmp/rpi4-usb-wakeword-backup
+APEX_NAME=com.android.hardware.audio.rpi.apex
+
+STOCK_APEX_SHA256=@STOCK_APEX_SHA256@
+PATCHED_APEX_SHA256=@PATCHED_APEX_SHA256@
+STOCK_POLICY_SHA256=@STOCK_POLICY_SHA256@
+PATCHED_POLICY_SHA256=@PATCHED_POLICY_SHA256@
+RC_SHA256=@RC_SHA256@
+RUNTIME_SHA256=@RUNTIME_SHA256@
+APK_SHA256=@APK_SHA256@
+
+ui_print() {
+    echo "ui_print $1" > "/proc/self/fd/$OUTFD"
+    echo "ui_print" > "/proc/self/fd/$OUTFD"
+}
+
+abort_install() {
+    ui_print "ERREUR: $1"
+    exit 1
+}
+
+sha256_file() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" | cut -d ' ' -f 1
+    elif command -v busybox >/dev/null 2>&1; then
+        busybox sha256sum "$1" | cut -d ' ' -f 1
+    elif command -v toybox >/dev/null 2>&1; then
+        toybox sha256sum "$1" | cut -d ' ' -f 1
+    else
+        return 1
+    fi
+}
+
+verify_hash() {
+    actual=$(sha256_file "$1") || abort_install "outil SHA-256 indisponible"
+    [ "$actual" = "$2" ] || abort_install "empreinte incorrecte: $1"
+}
+
+extract_payload() {
+    unzip -p "$ZIPFILE" "payload/$1" > "$WORKDIR/$1" || \
+        abort_install "extraction impossible: $1"
+    [ -s "$WORKDIR/$1" ] || abort_install "payload vide: $1"
+}
+
+ui_print "Raspberry Pi 4 - correctif micro USB/HOTWORD"
+ui_print "Build cible: Android 16 du 20 mai 2026"
+
+mount /vendor 2>/dev/null || true
+mount -o rw,remount /vendor 2>/dev/null || true
+mount /data 2>/dev/null || true
+
+[ -d /vendor/apex ] || abort_install "partition /vendor non montee"
+[ -d /vendor/etc/init ] || abort_install "configuration /vendor absente"
+[ -d /vendor/bin ] || abort_install "binaires /vendor absents"
+[ -d /data ] || abort_install "partition /data non montee"
+
+CURRENT_APEX=/vendor/apex/$APEX_NAME
+CURRENT_POLICY=/vendor/etc/usb_audio_policy_configuration.xml
+[ -s "$CURRENT_APEX" ] || abort_install "APEX audio actuel absent"
+[ -s "$CURRENT_POLICY" ] || abort_install "politique audio USB absente"
+
+current_apex_sha256=$(sha256_file "$CURRENT_APEX") || \
+    abort_install "calcul SHA-256 APEX impossible"
+case "$current_apex_sha256" in
+    "$STOCK_APEX_SHA256"|"$PATCHED_APEX_SHA256") ;;
+    *) abort_install "APEX inconnu: package strictement incompatible" ;;
+esac
+
+current_policy_sha256=$(sha256_file "$CURRENT_POLICY") || \
+    abort_install "calcul SHA-256 Audio Policy impossible"
+case "$current_policy_sha256" in
+    "$STOCK_POLICY_SHA256"|"$PATCHED_POLICY_SHA256") ;;
+    *) abort_install "Audio Policy inconnue: package incompatible" ;;
+esac
+
+rm -rf "$WORKDIR"
+mkdir -p "$WORKDIR" || abort_install "creation du dossier temporaire"
+extract_payload "$APEX_NAME"
+extract_payload "usb_audio_policy_configuration.xml"
+extract_payload "usb-mic-runtime.rc"
+extract_payload "usb-mic-runtime.sh"
+extract_payload "usb-mic-route.apk"
+
+verify_hash "$WORKDIR/$APEX_NAME" "$PATCHED_APEX_SHA256"
+verify_hash "$WORKDIR/usb_audio_policy_configuration.xml" "$PATCHED_POLICY_SHA256"
+verify_hash "$WORKDIR/usb-mic-runtime.rc" "$RC_SHA256"
+verify_hash "$WORKDIR/usb-mic-runtime.sh" "$RUNTIME_SHA256"
+verify_hash "$WORKDIR/usb-mic-route.apk" "$APK_SHA256"
+
+mkdir -p "$BACKUP_DIR" || abort_install "creation sauvegarde /data"
+if [ "$current_apex_sha256" = "$STOCK_APEX_SHA256" ]; then
+    cp -f "$CURRENT_APEX" "$BACKUP_DIR/$APEX_NAME" || \
+        abort_install "sauvegarde APEX stock impossible"
+    chown 0:0 "$BACKUP_DIR/$APEX_NAME"
+    chmod 0600 "$BACKUP_DIR/$APEX_NAME"
+fi
+
+[ -s "$BACKUP_DIR/$APEX_NAME" ] || \
+    abort_install "sauvegarde APEX stock absente; restauration TWRP requise"
+verify_hash "$BACKUP_DIR/$APEX_NAME" "$STOCK_APEX_SHA256"
+
+if [ "$current_policy_sha256" = "$STOCK_POLICY_SHA256" ]; then
+    cp -f "$CURRENT_POLICY" "$BACKUP_DIR/usb_audio_policy_configuration.xml" || \
+        abort_install "sauvegarde Audio Policy impossible"
+    chmod 0600 "$BACKUP_DIR/usb_audio_policy_configuration.xml"
+fi
+
+cp -f "$WORKDIR/$APEX_NAME" "$CURRENT_APEX.new" || \
+    abort_install "copie temporaire APEX impossible"
+chown 0:0 "$CURRENT_APEX.new"
+chmod 0644 "$CURRENT_APEX.new"
+restorecon "$CURRENT_APEX.new" 2>/dev/null || \
+    chcon u:object_r:vendor_file:s0 "$CURRENT_APEX.new" 2>/dev/null || true
+verify_hash "$CURRENT_APEX.new" "$PATCHED_APEX_SHA256"
+mv -f "$CURRENT_APEX.new" "$CURRENT_APEX" || abort_install "activation APEX impossible"
+
+cp -f "$WORKDIR/usb_audio_policy_configuration.xml" "$CURRENT_POLICY.new" || \
+    abort_install "copie temporaire Audio Policy impossible"
+chown 0:0 "$CURRENT_POLICY.new"
+chmod 0644 "$CURRENT_POLICY.new"
+restorecon "$CURRENT_POLICY.new" 2>/dev/null || \
+    chcon u:object_r:vendor_configs_file:s0 "$CURRENT_POLICY.new" 2>/dev/null || true
+verify_hash "$CURRENT_POLICY.new" "$PATCHED_POLICY_SHA256"
+mv -f "$CURRENT_POLICY.new" "$CURRENT_POLICY" || \
+    abort_install "activation Audio Policy impossible"
+
+cp -f "$WORKDIR/usb-mic-runtime.rc" /vendor/etc/init/usb-mic-runtime.rc || \
+    abort_install "copie du service init impossible"
+cp -f "$WORKDIR/usb-mic-runtime.sh" /vendor/bin/usb-mic-runtime.sh || \
+    abort_install "copie du script runtime impossible"
+cp -f "$WORKDIR/usb-mic-route.apk" /vendor/etc/usb-mic-route.apk || \
+    abort_install "copie du helper impossible"
+
+chown 0:0 /vendor/etc/init/usb-mic-runtime.rc \
+    /vendor/bin/usb-mic-runtime.sh /vendor/etc/usb-mic-route.apk
+chmod 0644 /vendor/etc/init/usb-mic-runtime.rc /vendor/etc/usb-mic-route.apk
+chmod 0755 /vendor/bin/usb-mic-runtime.sh
+restorecon /vendor/etc/init/usb-mic-runtime.rc \
+    /vendor/bin/usb-mic-runtime.sh /vendor/etc/usb-mic-route.apk 2>/dev/null || true
+
+verify_hash "$CURRENT_APEX" "$PATCHED_APEX_SHA256"
+verify_hash "$CURRENT_POLICY" "$PATCHED_POLICY_SHA256"
+verify_hash /vendor/etc/init/usb-mic-runtime.rc "$RC_SHA256"
+verify_hash /vendor/bin/usb-mic-runtime.sh "$RUNTIME_SHA256"
+verify_hash /vendor/etc/usb-mic-route.apk "$APK_SHA256"
+
+sync
+ui_print "Installation et sauvegarde verifiees."
+ui_print "Redemarrez maintenant vers System."
+exit 0
