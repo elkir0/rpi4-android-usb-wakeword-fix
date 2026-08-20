@@ -10,6 +10,20 @@ moment où l'écran d'entraînement veut l'utiliser.
 La manipulation ci-dessous libère uniquement ce listener. Google le recrée
 ensuite. Elle ne remplace pas le correctif APEX ou la politique mono.
 
+Pour exécuter les mêmes contrôles avec confirmation et revalidation automatique
+du PID, utiliser le compagnon public :
+
+```sh
+git clone https://github.com/elkir0/rpi-android-voice-setup.git
+cd rpi-android-voice-setup
+./tools/rpi-voice-setup doctor --serial IP:PORT
+./tools/rpi-voice-setup prepare-enrollment --serial IP:PORT
+# Après les phrases :
+./tools/rpi-voice-setup finish-enrollment --serial IP:PORT
+```
+
+La suite conserve la procédure manuelle complète pour audit et dépannage.
+
 ## 1. Aligner la langue
 
 ```sh

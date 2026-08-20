@@ -52,6 +52,13 @@ Le tutoriel détaillé couvre les prérequis, l'installation, le français,
 l'enrôlement Voice Match particulier, les contrôles silencieux, le diagnostic
 et le retour arrière : [`docs/TUTORIEL-FR.md`](docs/TUTORIEL-FR.md).
 
+L’application libre
+[Raspberry Voice Setup](https://github.com/elkir0/rpi-android-voice-setup)
+détecte les hashes connus, mesure réellement le micro USB et guide Voice Match.
+Son compagnon ADB applique les garde-fous décrits dans ce dépôt. Les commandes
+manuelles restent documentées ici : le correctif Pi 4 ne dépend pas de
+l’application.
+
 ## Contenu du dépôt
 
 ```text

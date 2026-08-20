@@ -1,0 +1,32 @@
+name: Validate sources
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Validate shell sources
+        run: |
+          bash -n scripts/build-release.sh
+          bash -n recovery/install/META-INF/com/google/android/update-binary
+          bash -n recovery/rollback/META-INF/com/google/android/update-binary
+
+      - name: Validate release guards
+        run: |
+          grep -q 'STOCK_APEX_SHA256' recovery/install/META-INF/com/google/android/update-binary
+          grep -q 'STOCK_POLICY_SHA256' recovery/install/META-INF/com/google/android/update-binary
+          grep -q 'BACKUP_DIR' recovery/rollback/META-INF/com/google/android/update-binary
+          ! grep -R -E 'pkill|am force-stop' recovery scripts diagnostics/audio-policy
+
+      - name: Check whitespace
+        run: git show --check --oneline --no-renames HEAD

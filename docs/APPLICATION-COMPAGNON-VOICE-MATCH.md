@@ -1,5 +1,9 @@
 # Application compagnon USB Voice Match
 
+> Cette spécification a donné naissance au dépôt public
+> [Raspberry Voice Setup](https://github.com/elkir0/rpi-android-voice-setup).
+> Le MVP Android et son compagnon ADB auditable y sont maintenant maintenus.
+
 ## Objectif
 
 Créer une application Android qui guide l'installation et le diagnostic du

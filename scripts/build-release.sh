@@ -28,6 +28,10 @@ sha256_file() {
     fi
 }
 
+normalize_tree_times() {
+    find "$1" -exec touch -t 202605200000 {} +
+}
+
 require_file() {
     if [[ ! -s "$1" ]]; then
         printf 'Fichier requis absent ou vide: %s\n' "$1" >&2
@@ -105,6 +109,8 @@ cp "$stock_policy" \
 
 chmod 0755 "$install_stage/META-INF/com/google/android/update-binary" \
     "$rollback_stage/META-INF/com/google/android/update-binary"
+normalize_tree_times "$install_stage"
+normalize_tree_times "$rollback_stage"
 
 rm -rf "$dist_dir"
 mkdir -p "$dist_dir"
@@ -151,6 +157,7 @@ cp "$project_dir/LICENSE" "$project_dir/NOTICE" "$bundle_stage/"
         rollback-rpi4-android-usb-wakeword-fix.zip LISEZ-MOI-FR.txt LICENSE NOTICE; do
         printf '%s  %s\n' "$(sha256_file "$file")" "$file"
     done > PACKAGE-SHA256SUMS
+    normalize_tree_times .
     zip -X -q -r "$bundle_zip" .
 )
 unzip -tq "$bundle_zip" >/dev/null
